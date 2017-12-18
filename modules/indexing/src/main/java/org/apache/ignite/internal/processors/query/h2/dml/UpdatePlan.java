@@ -376,9 +376,9 @@ public final class UpdatePlan {
     public List<List<?>> createRows(Object[] args) throws IgniteCheckedException {
         assert rowsNum > 0 && !F.isEmpty(colNames);
 
-        List<List<?>> res = new ArrayList<>(rowsNum);
-
         GridH2RowDescriptor desc = tbl.rowDescriptor();
+
+        List<List<?>> res = new ArrayList<>(rowsNum);
 
         for (List<DmlArgument> row : rows) {
             List<Object> resRow = new ArrayList<>();
@@ -396,6 +396,36 @@ public final class UpdatePlan {
             }
 
             res.add(resRow);
+        }
+
+        return res;
+    }
+
+    public List<List<?>> createRows(List<Object[]> argss) throws IgniteCheckedException {
+        assert rowsNum > 0 && !F.isEmpty(colNames);
+
+        GridH2RowDescriptor desc = tbl.rowDescriptor();
+
+        List<List<?>> res = new ArrayList<>(rowsNum * argss.size());
+
+        for (Object[] args : argss) {
+            for (List<DmlArgument> row : rows) {
+                List<Object> resRow = new ArrayList<>();
+
+                for (int j = 0; j < colNames.length; j++) {
+                    Object colVal = row.get(j).get(args);
+
+                    if (j == keyColIdx || j == valColIdx) {
+                        Class<?> colCls = j == keyColIdx ? desc.type().keyClass() : desc.type().valueClass();
+
+                        colVal = DmlUtils.convert(colVal, desc, colCls, colTypes[j]);
+                    }
+
+                    resRow.add(colVal);
+                }
+
+                res.add(resRow);
+            }
         }
 
         return res;

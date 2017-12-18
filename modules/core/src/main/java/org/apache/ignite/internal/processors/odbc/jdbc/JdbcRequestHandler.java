@@ -475,28 +475,45 @@ public class JdbcRequestHandler implements ClientListenerRequestHandler {
         if (F.isEmpty(schemaName))
             schemaName = QueryUtils.DFLT_SCHEMA;
 
+        int qryCnt = req.queries().size();
+
         int successQueries = 0;
-        int updCnts[] = new int[req.queries().size()];
+        int updCnts[] = new int[qryCnt];
 
         try {
-            String sql = null;
+            SqlFieldsQueryEx qry = null;
 
             for (JdbcQuery q : req.queries()) {
-                if (q.sql() != null)
-                    sql = q.sql();
+                if (q.sql() != null) {
+                    if (qry != null) {
+                        QueryCursorImpl<List<?>> qryCur = (QueryCursorImpl<List<?>>)ctx.query()
+                            .querySqlFieldsNoCache(qry, true, true).get(0);
 
-                SqlFieldsQuery qry = new SqlFieldsQueryEx(sql, false);
+                        assert !qryCur.isQuery();
 
-                qry.setArgs(q.args());
+                        List<List<?>> items = qryCur.getAll();
 
-                qry.setDistributedJoins(distributedJoins);
-                qry.setEnforceJoinOrder(enforceJoinOrder);
-                qry.setCollocated(collocated);
-                qry.setReplicatedOnly(replicatedOnly);
-                qry.setLazy(lazy);
+                        // TODO: Set on correct positions.
+                        updCnts[successQueries++] = ((Long)items.get(0).get(0)).intValue();
+                    }
 
-                qry.setSchema(schemaName);
+                    qry = new SqlFieldsQueryEx(q.sql(), false, qryCnt);
 
+                    qry.setDistributedJoins(distributedJoins);
+                    qry.setEnforceJoinOrder(enforceJoinOrder);
+                    qry.setCollocated(collocated);
+                    qry.setReplicatedOnly(replicatedOnly);
+                    qry.setLazy(lazy);
+
+                    qry.setSchema(schemaName);
+                }
+
+                assert qry != null;
+
+                qry.addBatchedArgs(q.args());
+            }
+
+            if (qry != null) {
                 QueryCursorImpl<List<?>> qryCur = (QueryCursorImpl<List<?>>)ctx.query()
                     .querySqlFieldsNoCache(qry, true, true).get(0);
 
@@ -504,6 +521,7 @@ public class JdbcRequestHandler implements ClientListenerRequestHandler {
 
                 List<List<?>> items = qryCur.getAll();
 
+                // TODO: Set on correct positions.
                 updCnts[successQueries++] = ((Long)items.get(0).get(0)).intValue();
             }
 

@@ -22,10 +22,13 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Date;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
+import org.apache.ignite.internal.processors.cache.query.SqlFieldsQueryEx;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.h2.H2Utils;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2RowDescriptor;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.h2.util.DateTimeUtils;
 import org.h2.util.LocalDateTimeUtils;
@@ -114,6 +117,22 @@ public class DmlUtils {
             throw new IgniteSQLException("Value conversion failed [from=" + currCls.getName() + ", to=" +
                 expCls.getName() +']', IgniteQueryErrorCode.CONVERSION_FAILED, e);
         }
+    }
+
+    /**
+     * Check whether query is batched.
+     *
+     * @param qry Query.
+     * @return {@code True} if batched.
+     */
+    public static boolean isBatched(SqlFieldsQuery qry) {
+        if (qry instanceof SqlFieldsQueryEx) {
+            SqlFieldsQueryEx qry0 = (SqlFieldsQueryEx)qry;
+
+            return !F.isEmpty(qry0.batchedArgs());
+        }
+
+        return false;
     }
 
     /**

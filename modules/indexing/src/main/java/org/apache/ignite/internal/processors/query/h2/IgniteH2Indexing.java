@@ -1507,14 +1507,17 @@ public class IgniteH2Indexing implements GridQueryIndexing {
                     int paramsCnt = prepared.getParameters().size();
 
                     if (paramsCnt > 0) {
-                        if (argsOrig == null || argsOrig.length < firstArg + paramsCnt) {
-                            throw new IgniteException("Invalid number of query parameters. " +
-                                "Cannot find " + (argsOrig.length + 1 - firstArg) + " parameter.");
+                        // TODO: Check remainer.
+                        if (prepared.isQuery()) {
+                            if (argsOrig == null || argsOrig.length < firstArg + paramsCnt) {
+                                throw new IgniteException("Invalid number of query parameters. " +
+                                    "Cannot find " + (argsOrig.length + 1 - firstArg) + " parameter.");
+                            }
+
+                            args = Arrays.copyOfRange(argsOrig, firstArg, firstArg + paramsCnt);
+
+                            firstArg += paramsCnt;
                         }
-
-                        args = Arrays.copyOfRange(argsOrig, firstArg, firstArg + paramsCnt);
-
-                        firstArg += paramsCnt;
                     }
 
                     cachedQryKey = new H2TwoStepCachedQueryKey(schemaName, sqlQry, grpByCollocated,
@@ -1555,7 +1558,7 @@ public class IgniteH2Indexing implements GridQueryIndexing {
                 if (twoStepQry == null) {
                     if (DmlStatementsProcessor.isDmlStatement(prepared)) {
                         try {
-                            res.add(dmlProc.updateSqlFieldsDistributed(schemaName, c, prepared,
+                            res.addAll(dmlProc.updateSqlFieldsDistributed(schemaName, c, prepared,
                                 qry.copy().setSql(sqlQry).setArgs(args), cancel));
 
                             continue;
