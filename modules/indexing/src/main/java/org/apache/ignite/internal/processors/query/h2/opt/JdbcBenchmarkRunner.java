@@ -20,7 +20,7 @@ public class JdbcBenchmarkRunner {
 
     private static final int THREAD_CNT = 1;
 
-    private static final int BATCH_SIZE = 10000;
+    private static final int BATCH_SIZE = 1000;
 
     private static final LongAdder OPS = new LongAdder();
 
@@ -30,6 +30,8 @@ public class JdbcBenchmarkRunner {
         U.delete(new File("C:\\Personal\\code\\incubator-ignite\\work"));
 
         IgniteConfiguration cfg = new IgniteConfiguration().setLocalHost("127.0.0.1");
+
+        cfg.setClientConnectorConfiguration(null);
 
 //        DataStorageConfiguration dsCfg = new DataStorageConfiguration().setWalMode(WALMode.LOG_ONLY);
 //
@@ -43,73 +45,77 @@ public class JdbcBenchmarkRunner {
         try (Ignite node = Ignition.start(cfg)) {
             node.active(true);
 
-            try (Connection conn = connect()) {
-                execute(conn, "CREATE TABLE tbl (id BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT, v3 BIGINT, v4 BIGINT)");
-            }
+            IgniteConfiguration cliCfg = new IgniteConfiguration().setLocalHost("127.0.0.1").setIgniteInstanceName("cli").setClientMode(true);
 
-            new Thread(new Runnable() {
-                @Override public void run() {
-                    while (!done) {
-                        long startTime = System.currentTimeMillis();
-                        long startOps = OPS.longValue();
-
-                        try {
-                            Thread.sleep(3000L);
-                        }
-                        catch (InterruptedException e) {
-                            break;
-                        }
-
-                        long endTime = System.currentTimeMillis();
-                        long endOps = OPS.longValue();
-
-                        double t = 1000 * (double)(endOps - startOps) / (double)(endTime - startTime);
-
-                        if (!done)
-                            System.out.println("Throughput: " + String.format("%1$,.2f", t) + " ops/sec");
-                    }
+            try (Ignite cli = Ignition.start(cliCfg)) {
+                try (Connection conn = connect()) {
+                    execute(conn, "CREATE TABLE tbl (id BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT, v3 BIGINT, v4 BIGINT)");
                 }
-            }).start();
-
-            JdbcRequestHandler.STREAMER = true;
-
-            long start = System.currentTimeMillis();
-
-            CyclicBarrier startBarrier = new CyclicBarrier(THREAD_CNT);
-            CountDownLatch stopLatch = new CountDownLatch(THREAD_CNT);
-
-            for (int i = 0; i < THREAD_CNT; i++) {
-                final int i0 = i;
 
                 new Thread(new Runnable() {
-                    @SuppressWarnings("InfiniteLoopStatement")
                     @Override public void run() {
-                        try (Connection conn = connect()) {
-                            startBarrier.await();
+                        while (!done) {
+                            long startTime = System.currentTimeMillis();
+                            long startOps = OPS.longValue();
 
-                            doUpdate(conn, i0);
+                            try {
+                                Thread.sleep(3000L);
+                            }
+                            catch (InterruptedException e) {
+                                break;
+                            }
 
-                            execute(conn, "FLUSH");
-                        }
-                        catch (Exception e) {
-                            System.out.println("ERROR: " + e);
-                        }
-                        finally {
-                            stopLatch.countDown();
+                            long endTime = System.currentTimeMillis();
+                            long endOps = OPS.longValue();
+
+                            double t = 1000 * (double)(endOps - startOps) / (double)(endTime - startTime);
+
+                            if (!done)
+                                System.out.println("Throughput: " + String.format("%1$,.2f", t) + " ops/sec");
                         }
                     }
                 }).start();
+
+                JdbcRequestHandler.STREAMER = true;
+
+                long start = System.currentTimeMillis();
+
+                CyclicBarrier startBarrier = new CyclicBarrier(THREAD_CNT);
+                CountDownLatch stopLatch = new CountDownLatch(THREAD_CNT);
+
+                for (int i = 0; i < THREAD_CNT; i++) {
+                    final int i0 = i;
+
+                    new Thread(new Runnable() {
+                        @SuppressWarnings("InfiniteLoopStatement")
+                        @Override public void run() {
+                            try (Connection conn = connect()) {
+                                startBarrier.await();
+
+                                doUpdate(conn, i0);
+
+                                execute(conn, "FLUSH");
+                            }
+                            catch (Exception e) {
+                                System.out.println("ERROR: " + e);
+                            }
+                            finally {
+                                stopLatch.countDown();
+                            }
+                        }
+                    }).start();
+                }
+
+                stopLatch.await();
+
+                done = true;
+
+                long end = System.currentTimeMillis();
+
+                float dur = (float)((double)(end - start) / 1000);
+
+                System.out.println("TOTAL DURATION: " + dur);
             }
-
-            stopLatch.await();
-
-            done = true;
-
-            long end = System.currentTimeMillis();
-
-            float dur = (float)((double)(end - start) / 1000);
-
-            System.out.println("TOTAL DURATION: " + dur);
         }
     }
 
