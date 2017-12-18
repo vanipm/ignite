@@ -465,6 +465,8 @@ public class JdbcRequestHandler implements ClientListenerRequestHandler {
         }
     }
 
+    public static volatile boolean STREAMER = false;
+
     /**
      * @param req Request.
      * @return Response.
@@ -506,6 +508,9 @@ public class JdbcRequestHandler implements ClientListenerRequestHandler {
                     qry.setLazy(lazy);
 
                     qry.setSchema(schemaName);
+
+                    if (STREAMER)
+                        qry.setStreaming(true);
                 }
 
                 assert qry != null;

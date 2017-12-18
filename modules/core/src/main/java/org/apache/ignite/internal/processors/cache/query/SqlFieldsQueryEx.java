@@ -38,6 +38,8 @@ public final class SqlFieldsQueryEx extends SqlFieldsQuery {
     /** Batched arguments. */
     private List<Object[]> batchedArgs;
 
+    private boolean streaming;
+
     public SqlFieldsQueryEx(String sql, Boolean isQry) {
         super(sql);
 
@@ -63,6 +65,7 @@ public final class SqlFieldsQueryEx extends SqlFieldsQuery {
         this.isQry = qry.isQry;
         this.skipReducerOnUpdate = qry.skipReducerOnUpdate;
         this.batchedArgs = qry.batchedArgs;
+        this.streaming = qry.streaming;
     }
 
     /**
@@ -162,6 +165,16 @@ public final class SqlFieldsQueryEx extends SqlFieldsQuery {
      */
     public boolean isSkipReducerOnUpdate() {
         return skipReducerOnUpdate;
+    }
+
+    public boolean isStreaming() {
+        return streaming;
+    }
+
+    public SqlFieldsQuery setStreaming(boolean streaming) {
+        this.streaming = streaming;
+
+        return this;
     }
 
     /**

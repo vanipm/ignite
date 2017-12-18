@@ -44,6 +44,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.QueryCursorImpl;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.cache.query.SqlFieldsQueryEx;
+import org.apache.ignite.internal.processors.datastreamer.DataStreamerImpl;
 import org.apache.ignite.internal.processors.odbc.SqlStateCode;
 import org.apache.ignite.internal.processors.query.GridQueryCacheObjectsIterator;
 import org.apache.ignite.internal.processors.query.GridQueryCancel;
@@ -233,7 +234,8 @@ public class DmlStatementsProcessor {
             try {
                 List<List<?>> cur = plan.createRows(argss);
 
-                UpdateResult res = processDmlSelectResultBatched(cctx, plan, cur, fieldsQry.getPageSize());
+                UpdateResult res =
+                    processDmlSelectResultBatched(cctx, plan, cur, fieldsQry.getPageSize(), fieldsQry.isStreaming());
 
                 Collection<UpdateResult> ress = new ArrayList<>(1);
 
@@ -503,14 +505,14 @@ public class DmlStatementsProcessor {
     }
 
     private UpdateResult processDmlSelectResultBatched(GridCacheContext cctx, UpdatePlan plan, Collection<List<?>> rows,
-        int pageSize) throws IgniteCheckedException {
+        int pageSize, boolean streaming) throws IgniteCheckedException {
         switch (plan.mode()) {
             case MERGE:
                 // TODO
                 throw new IgniteCheckedException("Unsupported, fix");
 
             case INSERT:
-                return new UpdateResult(doInsertBatched(plan, rows, pageSize), X.EMPTY_OBJECT_ARRAY);
+                return new UpdateResult(doInsertBatched(plan, rows, pageSize, streaming), X.EMPTY_OBJECT_ARRAY);
 
             default:
                 throw new IgniteSQLException("Unexpected DML operation [mode=" + plan.mode() + ']',
@@ -791,48 +793,81 @@ public class DmlStatementsProcessor {
         }
     }
 
+    public static volatile DataStreamerImpl streamer;
+
+    public void flushStreamer() {
+        DataStreamerImpl streamer0 = streamer;
+
+        if (streamer0 != null)
+            streamer0.flush();
+    }
+
     /**
      * Execute INSERT statement plan.
-     * @param cursor Cursor to take inserted data from.
+     * @param rows Cursor to take inserted data from.
      * @param pageSize Batch size for streaming, anything <= 0 for single page operations.
      * @return Number of items affected.
      * @throws IgniteCheckedException if failed, particularly in case of duplicate keys.
      */
     @SuppressWarnings({"unchecked", "ConstantConditions"})
-    private long doInsertBatched(UpdatePlan plan, Collection<List<?>> cursor, int pageSize)
+    private long doInsertBatched(UpdatePlan plan, Collection<List<?>> rows, int pageSize, boolean streaming)
         throws IgniteCheckedException {
         GridCacheContext cctx = plan.cacheContext();
 
-        // Keys that failed to INSERT due to duplication.
-        DmlBatchSender sender = new DmlBatchSender(cctx, pageSize);
+        if (streaming) {
+            DataStreamerImpl streamer0 = streamer;
 
-        for (List<?> row : cursor) {
-            final IgniteBiTuple keyValPair = plan.processRow(row);
+            if (streamer0 == null) {
+                streamer0 = cctx.kernalContext().dataStream().dataStreamer(cctx.name());
 
-            sender.add(keyValPair.getKey(), new InsertEntryProcessor(keyValPair.getValue()));
+                streamer = streamer0;
+            }
+
+            List<IgniteBiTuple> keyValPairs = new ArrayList<>(rows.size());
+
+            for (List<?> row : rows) {
+                IgniteBiTuple keyValPair = plan.processRow(row);
+
+                keyValPairs.add(keyValPair);
+            }
+
+            streamer.addData(keyValPairs);
+
+            return rows.size();
         }
+        else {
 
-        // TODO: Tale page size in count?
-        sender.flush();
+            // Keys that failed to INSERT due to duplication.
+            DmlBatchSender sender = new DmlBatchSender(cctx, pageSize);
 
-        SQLException resEx = sender.error();
+            for (List<?> row : rows) {
+                final IgniteBiTuple keyValPair = plan.processRow(row);
 
-        if (!F.isEmpty(sender.failedKeys())) {
-            String msg = "Failed to INSERT some keys because they are already in cache " +
-                "[keys=" + sender.failedKeys() + ']';
+                sender.add(keyValPair.getKey(), new InsertEntryProcessor(keyValPair.getValue()));
+            }
 
-            SQLException dupEx = new SQLException(msg, SqlStateCode.CONSTRAINT_VIOLATION);
+            // TODO: Tale page size in count?
+            sender.flush();
 
-            if (resEx == null)
-                resEx = dupEx;
-            else
-                resEx.setNextException(dupEx);
+            SQLException resEx = sender.error();
+
+            if (!F.isEmpty(sender.failedKeys())) {
+                String msg = "Failed to INSERT some keys because they are already in cache " +
+                    "[keys=" + sender.failedKeys() + ']';
+
+                SQLException dupEx = new SQLException(msg, SqlStateCode.CONSTRAINT_VIOLATION);
+
+                if (resEx == null)
+                    resEx = dupEx;
+                else
+                    resEx.setNextException(dupEx);
+            }
+
+            if (resEx != null)
+                throw new IgniteSQLException(resEx);
+
+            return sender.updateCount();
         }
-
-        if (resEx != null)
-            throw new IgniteSQLException(resEx);
-
-        return sender.updateCount();
     }
 
     /**

@@ -1405,6 +1405,21 @@ public class IgniteH2Indexing implements GridQueryIndexing {
     /** {@inheritDoc} */
     @Override public List<FieldsQueryCursor<List<?>>> queryDistributedSqlFields(String schemaName, SqlFieldsQuery qry,
         boolean keepBinary, GridQueryCancel cancel, @Nullable Integer mainCacheId, boolean failOnMultipleStmts) {
+        if ("FLUSH".equalsIgnoreCase(qry.getSql())) {
+            dmlProc.flushStreamer();
+
+            QueryCursorImpl<List<?>> resCur = (QueryCursorImpl<List<?>>)new QueryCursorImpl(Collections.singletonList
+                (Collections.singletonList(0L)), null, false);
+
+            resCur.fieldsMeta(UPDATE_RESULT_META);
+
+            List<FieldsQueryCursor<List<?>>> res = new ArrayList<>(1);
+
+            res.add(resCur);
+
+            return res;
+        }
+
         List<FieldsQueryCursor<List<?>>> res = tryQueryDistributedSqlFieldsNative(schemaName, qry);
 
         if (res != null)
