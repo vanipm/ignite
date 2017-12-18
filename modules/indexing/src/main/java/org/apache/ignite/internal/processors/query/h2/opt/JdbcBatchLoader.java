@@ -44,7 +44,7 @@ public class JdbcBatchLoader {
             try {
                 JdbcBatchLoader ldr = new JdbcBatchLoader();
 
-                ldr.load(10_000_000, 10_000, 8, "127.0.0.1");
+                ldr.load(10_000_000, 10_000, 1, "127.0.0.1");
             }
             catch (Exception e) {
                 log("Failed to load data into cloud");
@@ -64,6 +64,8 @@ public class JdbcBatchLoader {
      * @throws Exception If failed to load data to cloud.
      */
     public void load(int total, int batch, int threads, String addr) throws Exception {
+        ExecutorService exec = Executors.newFixedThreadPool(threads);
+
         log("Connecting to IGNITE...");
 
         ComboPooledDataSource dataSrc = new ComboPooledDataSource();
@@ -76,28 +78,29 @@ public class JdbcBatchLoader {
 
             stmt.execute(SQL_CREATE);
 
+            int cnt = total / batch;
+
+            CountDownLatch latch = new CountDownLatch(cnt);
+
+            log("Start loading of " + total + " records...");
+
+            long start = System.currentTimeMillis();
+
+            for (int i = 0; i < cnt; i++)
+                exec.execute(new Worker(dataSrc, i, batch, latch));
+
+            latch.await();
+
+            stmt.execute("FLUSH");
+
             U.closeQuiet(stmt);
+
+            log("Loading time: " + (System.currentTimeMillis() - start) / 1000 + "seconds");
+            log("Loading finished!");
         }
 
-        int cnt = total / batch;
-
-        CountDownLatch latch = new CountDownLatch(cnt);
-
-        ExecutorService exec = Executors.newFixedThreadPool(threads);
-
-        log("Start loading of " + total + " records...");
-
-        long start = System.currentTimeMillis();
-
-        for (int i = 0; i < cnt; i++)
-            exec.execute(new Worker(dataSrc, i, batch, latch));
-
-        latch.await();
-
-        log("Loading time: " + (System.currentTimeMillis() - start) / 1000 + "seconds");
-        log("Loading finished!");
-
         U.shutdownNow(JdbcBatchLoader.class, exec, null);
+
         dataSrc.close();
     }
 

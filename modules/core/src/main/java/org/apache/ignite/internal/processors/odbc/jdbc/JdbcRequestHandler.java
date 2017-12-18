@@ -465,7 +465,7 @@ public class JdbcRequestHandler implements ClientListenerRequestHandler {
         }
     }
 
-    public static volatile boolean STREAMER = true;
+    public static volatile boolean STREAMER = false;//Boolean.getBoolean("IGNITE_JDBC_STREAMER");
 
     /**
      * @param req Request.
