@@ -16,7 +16,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.LongAdder;
 
 public class JdbcBenchmarkRunner {
-    private static final long KEY_CNT = 5_000_000;
+    private static final long KEY_CNT = 50_000_000;
 
     private static final int THREAD_CNT = 1;
 
