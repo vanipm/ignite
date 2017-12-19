@@ -235,7 +235,7 @@ public class DmlStatementsProcessor {
                 List<List<?>> cur = plan.createRows(argss);
 
                 UpdateResult res =
-                    processDmlSelectResultBatched(cctx, plan, cur, fieldsQry.getPageSize(), fieldsQry.isStreaming());
+                    processDmlSelectResultBatched(plan, cur, fieldsQry.getPageSize(), fieldsQry.isStreaming());
 
                 Collection<UpdateResult> ress = new ArrayList<>(1);
 
@@ -504,8 +504,8 @@ public class DmlStatementsProcessor {
         return processDmlSelectResult(cctx, plan, cur, pageSize);
     }
 
-    private UpdateResult processDmlSelectResultBatched(GridCacheContext cctx, UpdatePlan plan, Collection<List<?>> rows,
-        int pageSize, boolean streaming) throws IgniteCheckedException {
+    private UpdateResult processDmlSelectResultBatched(UpdatePlan plan, Collection<List<?>> rows, int pageSize,
+        boolean streaming) throws IgniteCheckedException {
         switch (plan.mode()) {
             case MERGE:
                 // TODO
